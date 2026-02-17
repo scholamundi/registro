@@ -1,3 +1,114 @@
+<script type="module">
+  // Import Firebase base
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";
+  import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-analytics.js";
+
+  // Import Firestore (database)
+  import {
+    getFirestore,
+    doc,
+    setDoc,
+    getDoc,
+    getDocs,
+    collection,
+    updateDoc,
+    deleteDoc,
+    query,
+    where,
+    addDoc
+  } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
+
+  // Import Authentication (login)
+  import {
+    getAuth,
+    signInWithEmailAndPassword,
+    signOut
+  } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-auth.js";
+
+  // --- CONFIGURAZIONE FIREBASE (la tua) ---
+  const firebaseConfig = {
+    apiKey: "AIzaSyA60dEDUE8kQda_hbGsCclNx5oBKzhUl5Y",
+    authDomain: "registro-c5841.firebaseapp.com",
+    projectId: "registro-c5841",
+    storageBucket: "registro-c5841.firebasestorage.app",
+    messagingSenderId: "1042215508879",
+    appId: "1:1042215508879:web:796c707f9856a554e809fa",
+    measurementId: "G-CF38Z5Q3BM"
+  };
+
+  // --- INIZIALIZZAZIONE ---
+  const app = initializeApp(firebaseConfig);
+  const analytics = getAnalytics(app);
+
+  // Firestore
+  const db = getFirestore(app);
+
+  // Auth
+  const auth = getAuth(app);
+
+  // --- FUNZIONI FIREBASE ---
+  
+  // Carica tutti i dati da Firebase
+  window.loadAllData = async function() {
+    try {
+      // Carica classi
+      const classesSnap = await getDoc(doc(db, "registro", "classes"));
+      if (classesSnap.exists()) {
+        window.classes = classesSnap.data().data || {};
+      }
+      
+      // Carica presenze
+      const presenzeSnap = await getDoc(doc(db, "registro", "presenze"));
+      if (presenzeSnap.exists()) {
+        window.presenze = presenzeSnap.data().data || {};
+      }
+      
+      // Carica voti
+      const votiSnap = await getDoc(doc(db, "registro", "voti"));
+      if (votiSnap.exists()) {
+        window.voti = votiSnap.data().data || {};
+      }
+      
+      // Carica note
+      const noteSnap = await getDoc(doc(db, "registro", "note"));
+      if (noteSnap.exists()) {
+        window.note = noteSnap.data().data || {};
+      }
+      
+      // Carica utenti
+      const usersSnap = await getDoc(doc(db, "registro", "users"));
+      if (usersSnap.exists()) {
+        window.users = usersSnap.data().data || {};
+      }
+      
+      // Assicurati che l'admin esista
+      if (!window.users.admin) {
+        window.users.admin = {password: "admin", role: "admin", classes: "ALL"};
+        await saveAllToFirebase();
+      }
+      
+      console.log("Dati caricati da Firebase");
+    } catch (error) {
+      console.error("Errore caricamento dati:", error);
+    }
+  };
+  
+  // Salva tutti i dati su Firebase
+  window.saveAllToFirebase = async function() {
+    try {
+      await setDoc(doc(db, "registro", "classes"), { data: window.classes });
+      await setDoc(doc(db, "registro", "presenze"), { data: window.presenze });
+      await setDoc(doc(db, "registro", "voti"), { data: window.voti });
+      await setDoc(doc(db, "registro", "note"), { data: window.note });
+      await setDoc(doc(db, "registro", "users"), { data: window.users });
+      console.log("Dati salvati su Firebase");
+    } catch (error) {
+      console.error("Errore salvataggio dati:", error);
+    }
+  };
+</script>
+
+
 <!DOCTYPE html>
 <html>
 <head>
@@ -369,7 +480,6 @@
             <input id="loginUser" placeholder="Username" onkeypress="if(event.key==='Enter'){event.preventDefault(); login(); return false;}">
             <input id="loginPass" type="password" placeholder="Password" onkeypress="if(event.key==='Enter'){event.preventDefault(); login(); return false;}">
             <button onclick="login(); return false;">Entra</button>
-            <p style="font-size:12px;color:#777;margin-top:10px">admin / admin</p>
         </div>
     </div>
 
@@ -383,7 +493,6 @@
             <div id="menuGrades" class="menu-item" onclick="showPage('gradesPage')">Voti</div>
             <div id="menuNotes" class="menu-item" onclick="showPage('notesPage')">Note</div>
             <div style="margin-top:auto" class="menu-item menu-item-danger" onclick="logout()">Logout</div>
-            <div id="menuReset" class="menu-item menu-item-danger" onclick="resetAll()">Reset</div>
         </div>
 
         <div class="main">
@@ -465,37 +574,32 @@
     </div>
 
     <script>
-        // Data initialization
-        let classes = JSON.parse(localStorage.getItem("classes")) || {
-            "1A": ["Rossi Luca", "Bianchi Sara"],
-            "2B": ["Neri Anna"]
-        };
-        let presenze = JSON.parse(localStorage.getItem("presenze")) || {};
-        let voti = JSON.parse(localStorage.getItem("voti")) || {};
-        let note = JSON.parse(localStorage.getItem("note")) || {};
-        let users;
+        // Data initialization - verranno caricati da Firebase
+        // Usa le variabili window caricate da Firebase
+        window.classes = window.classes || {};
+        window.presenze = window.presenze || {};
+        window.voti = window.voti || {};
+        window.note = window.note || {};
+        window.users = window.users || {};
         
-        try {
-            users = JSON.parse(localStorage.getItem("users"));
-            if (typeof users !== "object" || users === null) throw 0;
-        } catch(e) {
-            users = {};
-        }
-
-        if (!users.admin) {
-            users.admin = {password: "admin", role: "admin", classes: "ALL"};
-            localStorage.setItem("users", JSON.stringify(users));
-        }
+        let classes = window.classes;
+        let presenze = window.presenze;
+        let voti = window.voti;
+        let note = window.note;
+        let users = window.users;
 
         let currentUser = null;
 
         // Utility functions
         function saveAll() {
-            localStorage.setItem("classes", JSON.stringify(classes));
-            localStorage.setItem("presenze", JSON.stringify(presenze));
-            localStorage.setItem("voti", JSON.stringify(voti));
-            localStorage.setItem("note", JSON.stringify(note));
-            localStorage.setItem("users", JSON.stringify(users));
+            // Assicurati che window abbia i dati aggiornati
+            window.classes = classes;
+            window.presenze = presenze;
+            window.voti = voti;
+            window.note = note;
+            window.users = users;
+            // Salva su Firebase
+            saveAllToFirebase();
         }
 
         function escapeHtml(unsafe) {
@@ -508,7 +612,7 @@
         }
 
         // Login/Logout
-        function login() {
+        async function login() {
             let u = document.getElementById('loginUser').value.trim();
             let p = document.getElementById('loginPass').value.trim();
             
@@ -517,25 +621,57 @@
                 return;
             }
             
-            if (!users[u]) {
-                alert("Utente non trovato");
-                return;
+            // Mostra messaggio di caricamento
+            const loginBtn = document.querySelector('#loginPage button');
+            const originalText = loginBtn.textContent;
+            loginBtn.textContent = 'Caricamento dati...';
+            loginBtn.disabled = true;
+            
+            try {
+                // Carica i dati da Firebase prima di verificare le credenziali
+                await loadAllData();
+                
+                // Sincronizza le variabili locali con i dati caricati
+                classes = window.classes;
+                presenze = window.presenze;
+                voti = window.voti;
+                note = window.note;
+                users = window.users;
+                
+                if (!users[u]) {
+                    alert("Utente non trovato");
+                    loginBtn.textContent = originalText;
+                    loginBtn.disabled = false;
+                    return;
+                }
+                
+                if (users[u].password !== p) {
+                    alert("Password errata");
+                    loginBtn.textContent = originalText;
+                    loginBtn.disabled = false;
+                    return;
+                }
+                
+                currentUser = {username: u, ...users[u]};
+                
+                document.getElementById('loginPage').style.display = "none";
+                document.getElementById('app').style.display = "flex";
+                document.getElementById('sidebarTitle').textContent = "Registro (" + u + ")";
+                
+                initializeDates();
+                setupRoleUI();
+                showPage("dailyPage");
+                
+                // Ripristina il pulsante
+                loginBtn.textContent = originalText;
+                loginBtn.disabled = false;
+            } catch (error) {
+                console.error("Errore durante il login:", error);
+                alert("Errore durante il caricamento dei dati. Riprova.");
+                loginBtn.textContent = originalText;
+                loginBtn.disabled = false;
             }
             
-            if (users[u].password !== p) {
-                alert("Password errata");
-                return;
-            }
-            
-            currentUser = {username: u, ...users[u]};
-            
-            document.getElementById('loginPage').style.display = "none";
-            document.getElementById('app').style.display = "flex";
-            document.getElementById('sidebarTitle').textContent = "Registro (" + u + ")";
-            
-            initializeDates();
-            setupRoleUI();
-            showPage("dailyPage");
             return false;
         }
 
@@ -550,7 +686,6 @@
             document.getElementById('menuClasses').style.display = isAdmin ? "block" : "none";
             document.getElementById('menuStudents').style.display = isAdmin ? "block" : "none";
             document.getElementById('menuTeachers').style.display = isAdmin ? "block" : "none";
-            document.getElementById('menuReset').style.display = isAdmin ? "block" : "none";
         }
 
         function showPage(id) {
@@ -1216,13 +1351,7 @@
             });
         }
 
-        // Reset function
-        function resetAll() {
-            if (confirm("Sicuro?")) {
-                localStorage.clear();
-                location.reload();
-            }
-        }
+
 
         // History page for attendance
         function showHistoryPage() {
