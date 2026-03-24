@@ -472,6 +472,62 @@
             }
         }
         
+        /* Confirmation modal */
+        #confirmModal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.45);
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+        }
+        #confirmModal.active {
+            display: flex;
+        }
+        .confirm-box {
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.22);
+            padding: 28px 32px;
+            max-width: 360px;
+            width: 90%;
+            text-align: center;
+        }
+        .confirm-box h3 {
+            margin: 0 0 10px 0;
+            color: #c0392b;
+            font-size: 18px;
+        }
+        .confirm-box p {
+            margin: 0 0 22px 0;
+            color: #444;
+            font-size: 15px;
+        }
+        .confirm-box .confirm-actions {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+        }
+        .confirm-box .confirm-actions button {
+            flex: 1;
+            max-width: 130px;
+            width: auto;
+            margin: 0;
+        }
+        .confirm-btn-cancel {
+            background: #95a5a6 !important;
+        }
+        .confirm-btn-cancel:hover {
+            background: #7f8c8d !important;
+        }
+        .confirm-btn-delete {
+            background: #e74c3c !important;
+        }
+        .confirm-btn-delete:hover {
+            background: #c0392b !important;
+        }
+
         @media (max-width: 480px) {
             .sidebar {
                 padding: 8px 5px;
@@ -511,6 +567,18 @@
     </style>
 </head>
 <body>
+
+    <!-- Confirmation modal -->
+    <div id="confirmModal">
+        <div class="confirm-box">
+            <h3>⚠ Conferma eliminazione</h3>
+            <p id="confirmMessage"></p>
+            <div class="confirm-actions">
+                <button class="confirm-btn-cancel" onclick="closeConfirmModal()">Annulla</button>
+                <button class="confirm-btn-delete" onclick="executeConfirm()">Elimina</button>
+            </div>
+        </div>
+    </div>
 
     <div id="loginPage">
         <div class="login-card">
@@ -1046,24 +1114,26 @@
                 return;
             }
 
-            let index = gruppi[gruppoName].indexOf(studentName);
-            if (index === -1) return;
+            confirmDelete('Eliminare lo studente "' + studentName + '"? Verranno cancellati anche presenze, giudizi e note.', function() {
+                let index = gruppi[gruppoName].indexOf(studentName);
+                if (index === -1) return;
 
-            gruppi[gruppoName].splice(index, 1);
-            delete giudizi[studentName];
-            delete note[studentName];
-            if (presenze[gruppoName]?.[studentName]) {
-                delete presenze[gruppoName][studentName];
-            }
+                gruppi[gruppoName].splice(index, 1);
+                delete giudizi[studentName];
+                delete note[studentName];
+                if (presenze[gruppoName]?.[studentName]) {
+                    delete presenze[gruppoName][studentName];
+                }
 
-            selectedElencoStudent = null;
-            saveAll();
-            renderElencoPage();
-            renderStudentList();
-            renderDailyPage();
-            renderGradeSelectors();
-            renderNoteSelectors();
-            renderGruppiList();
+                selectedElencoStudent = null;
+                saveAll();
+                renderElencoPage();
+                renderStudentList();
+                renderDailyPage();
+                renderGradeSelectors();
+                renderNoteSelectors();
+                renderGruppiList();
+            });
         }
 
         // Daily attendance
@@ -1205,11 +1275,13 @@
         }
 
         function deleteGruppo(c) {
-            delete gruppi[c];
-            saveAll();
-            renderGruppiList();
-            renderStudentList();
-            renderTeacherPage();
+            confirmDelete('Eliminare il gruppo "' + c + '"? Tutti gli studenti del gruppo verranno rimossi.', function() {
+                delete gruppi[c];
+                saveAll();
+                renderGruppiList();
+                renderStudentList();
+                renderTeacherPage();
+            });
         }
 
         function updateStudentGruppoSelect() {
@@ -1265,11 +1337,13 @@
 
         function deleteStudent(c, i) {
             let s = gruppi[c][i];
-            delete giudizi[s];
-            delete note[s];
-            gruppi[c].splice(i, 1);
-            saveAll();
-            renderStudentList();
+            confirmDelete('Eliminare lo studente "' + s + '" dal gruppo "' + c + '"?', function() {
+                delete giudizi[s];
+                delete note[s];
+                gruppi[c].splice(i, 1);
+                saveAll();
+                renderStudentList();
+            });
         }
 
         // Teachers management
@@ -1367,9 +1441,11 @@
 
         function deleteTeacher(u) {
             if (u === "admin") return;
-            delete users[u];
-            saveAll();
-            renderTeacherPage();
+            confirmDelete('Eliminare l\'insegnante "' + u + '"?', function() {
+                delete users[u];
+                saveAll();
+                renderTeacherPage();
+            });
         }
 
         // Judgments management
@@ -1444,9 +1520,11 @@
                 return;
             }
             
-            giudizi[s].splice(i, 1);
-            saveAll();
-            renderGrades();
+            confirmDelete('Eliminare il giudizio "' + grade.valore + '" del ' + grade.data + ' per "' + s + '"?', function() {
+                giudizi[s].splice(i, 1);
+                saveAll();
+                renderGrades();
+            });
         }
 
         function renderGrades() {
@@ -1587,9 +1665,12 @@
                 return;
             }
             
-            note[s].splice(i, 1);
-            saveAll();
-            renderNotes();
+            let preview = n.testo.length > 40 ? n.testo.substring(0, 40) + '...' : n.testo;
+            confirmDelete('Eliminare la nota "' + preview + '" del ' + n.data + ' per "' + s + '"?', function() {
+                note[s].splice(i, 1);
+                saveAll();
+                renderNotes();
+            });
         }
 
         function renderNotes() {
@@ -1806,6 +1887,28 @@
             }
         }
         
+        // Confirmation modal
+        let _confirmCallback = null;
+
+        function confirmDelete(message, onConfirm) {
+            document.getElementById('confirmMessage').textContent = message;
+            _confirmCallback = onConfirm;
+            document.getElementById('confirmModal').classList.add('active');
+        }
+
+        function closeConfirmModal() {
+            document.getElementById('confirmModal').classList.remove('active');
+            _confirmCallback = null;
+        }
+
+        function executeConfirm() {
+            document.getElementById('confirmModal').classList.remove('active');
+            if (typeof _confirmCallback === 'function') {
+                _confirmCallback();
+            }
+            _confirmCallback = null;
+        }
+
         // Export to Excel (admin only)
         function exportExcel() {
             if (currentUser.role !== "admin") {
