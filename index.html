@@ -239,6 +239,39 @@
             font-size: 13px;
             color: #555;
         }
+        .elenco-layout {
+            display: grid;
+            grid-template-columns: 320px 1fr;
+            gap: 16px;
+        }
+        .elenco-list {
+            max-height: 70vh;
+            overflow-y: auto;
+            border: 1px solid #eee;
+            border-radius: 10px;
+            padding: 10px;
+            background: #fafbfc;
+        }
+        .student-link-btn {
+            width: 100%;
+            text-align: left;
+            margin-bottom: 6px;
+            background: #ecf0f1;
+            color: #2c3e50;
+        }
+        .student-link-btn.active {
+            background: #3498db;
+            color: #fff;
+        }
+        .detail-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        .muted {
+            color: #666;
+            font-size: 13px;
+        }
         .history-table {
             overflow-x: auto;
             margin-top: 15px;
@@ -364,6 +397,10 @@
             .card {
                 padding: 15px;
             }
+
+            .elenco-layout {
+                grid-template-columns: 1fr;
+            }
             
             .flex {
                 flex-direction: column;
@@ -486,6 +523,7 @@
     <div id="app" class="app-wrapper" style="display: none;">
         <div class="sidebar">
             <h2 id="sidebarTitle">Registro</h2>
+            <div id="menuElenco" class="menu-item" onclick="showPage('elencoPage')">Elenco</div>
             <div id="menuDaily" class="menu-item" onclick="showPage('dailyPage')">Presenze</div>
             <div id="menuGruppi" class="menu-item" onclick="showPage('gruppiPage')">Gruppi</div>
             <div id="menuStudents" class="menu-item" onclick="showPage('studentPage')">Studenti</div>
@@ -497,7 +535,18 @@
 
         <div class="main">
 
-            <div id="dailyPage" class="card">
+            <div id="elencoPage" class="card">
+                <h2>Elenco</h2>
+                <p class="muted">Clicca uno studente per visualizzare tutte le informazioni. Le modifiche dipendono dai permessi.</p>
+                <div class="elenco-layout">
+                    <div id="elencoList" class="elenco-list"></div>
+                    <div id="elencoDetail" class="class-block">
+                        <p class="muted">Seleziona uno studente dall'elenco.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div id="dailyPage" class="card hidden">
                 <h2>Presenze</h2>
                 <div class="flex date-controls">
                     <button onclick="changeDay(-1)">◀</button>
@@ -596,6 +645,7 @@
         let users = window.users;
 
         let currentUser = null;
+        let selectedElencoStudent = null;
 
         // Utility functions
         function saveAll() {
@@ -667,7 +717,7 @@
                 
                 initializeDates();
                 setupRoleUI();
-                showPage("dailyPage");
+                showPage("elencoPage");
                 
                 // Ripristina il pulsante
                 loginBtn.textContent = originalText;
@@ -710,6 +760,7 @@
                 console.log('Page shown:', id);
                 
                 if (id === "dailyPage") renderDailyPage();
+                if (id === "elencoPage") renderElencoPage();
                 if (id === "gruppiPage") renderGruppiList();
                 if (id === "studentPage") renderStudentList();
                 if (id === "teachersPage") renderTeacherPage();
@@ -753,6 +804,13 @@
             return false;
         }
 
+        function canWriteGiudiziENote(studentName) {
+            // Tutti i docenti possono inserire giudizi/note per qualsiasi studente.
+            if (currentUser.role === "admin") return true;
+            if (currentUser.role === "teacher") return true;
+            return canEditStudent(studentName);
+        }
+
         function getStudentGruppo(studentName) {
             for (const c in gruppi) {
                 if (gruppi[c].includes(studentName)) {
@@ -760,6 +818,249 @@
                 }
             }
             return "";
+        }
+
+        function hasEditPermissionForGruppo(gruppoName) {
+            if (currentUser.role === "admin") return true;
+            if (currentUser.gruppi === "ALL") return true;
+            return Array.isArray(currentUser.gruppi) && currentUser.gruppi.includes(gruppoName);
+        }
+
+        function getStudentAttendanceSummary(studentName, gruppoName) {
+            let summary = {
+                presente: 0,
+                assenteGiustificato: 0,
+                assenteIngiustificato: 0
+            };
+            let studentPresenze = presenze[gruppoName]?.[studentName] || {};
+            Object.values(studentPresenze).forEach(entry => {
+                let valore = typeof entry === "string" ? entry : entry?.valore;
+                if (valore === "Presente") summary.presente += 1;
+                if (valore === "Assente Giustificato") summary.assenteGiustificato += 1;
+                if (valore === "Assente Ingiustificato") summary.assenteIngiustificato += 1;
+            });
+            return summary;
+        }
+
+        function findStudentConflicts(studentName) {
+            for (const g in gruppi) {
+                if (gruppi[g].includes(studentName)) return true;
+            }
+            return false;
+        }
+
+        function renderElencoPage() {
+            let elencoList = document.getElementById('elencoList');
+            let elencoDetail = document.getElementById('elencoDetail');
+            if (!elencoList || !elencoDetail) return;
+
+            elencoList.innerHTML = "";
+            let vis = getVisibleGruppi();
+            let totalStudents = 0;
+
+            Object.keys(vis).sort().forEach(g => {
+                let title = document.createElement("h3");
+                title.textContent = "Gruppo " + g;
+                elencoList.appendChild(title);
+
+                vis[g].forEach(studentName => {
+                    totalStudents += 1;
+                    let btn = document.createElement("button");
+                    btn.className = "student-link-btn" + (selectedElencoStudent === studentName ? " active" : "");
+                    btn.textContent = studentName;
+                    btn.onclick = () => {
+                        selectedElencoStudent = studentName;
+                        renderElencoPage();
+                    };
+                    elencoList.appendChild(btn);
+                });
+            });
+
+            if (!totalStudents) {
+                elencoDetail.innerHTML = "<p class='muted'>Nessuno studente presente.</p>";
+                return;
+            }
+
+            if (!selectedElencoStudent || !getStudentGruppo(selectedElencoStudent)) {
+                selectedElencoStudent = Object.keys(vis)
+                    .sort()
+                    .flatMap(g => vis[g])[0] || null;
+            }
+
+            renderElencoDetail(selectedElencoStudent);
+        }
+
+        function renderElencoDetail(studentName) {
+            let elencoDetail = document.getElementById('elencoDetail');
+            if (!elencoDetail) return;
+            if (!studentName) {
+                elencoDetail.innerHTML = "<p class='muted'>Seleziona uno studente dall'elenco.</p>";
+                return;
+            }
+
+            let gruppoName = getStudentGruppo(studentName);
+            if (!gruppoName) {
+                elencoDetail.innerHTML = "<p class='muted'>Studente non trovato.</p>";
+                return;
+            }
+
+            let canEdit = canEditStudent(studentName);
+            let isAdmin = currentUser.role === "admin";
+            let attendance = getStudentAttendanceSummary(studentName, gruppoName);
+            let studentGiudizi = giudizi[studentName] || [];
+            let studentNote = note[studentName] || [];
+
+            let giudiziHtml = studentGiudizi.length
+                ? studentGiudizi.map(g => `<div class="row"><div>${escapeHtml(g.data)} - ${escapeHtml(g.tipologia)}: ${escapeHtml(g.valore)}</div></div>`).join("")
+                : "<p class='muted'>Nessun giudizio registrato.</p>";
+
+            let noteHtml = studentNote.length
+                ? studentNote.map(n => `<div class="row"><div>${escapeHtml(n.data)} - ${escapeHtml(n.testo)}</div></div>`).join("")
+                : "<p class='muted'>Nessuna nota registrata.</p>";
+
+            let gruppoOptions = Object.keys(gruppi)
+                .sort()
+                .map(g => `<option value="${escapeHtml(g)}" ${g === gruppoName ? "selected" : ""}>${escapeHtml(g)}</option>`)
+                .join("");
+
+            let canEditText = canEdit ? "Puoi modificare i dati autorizzati." : "Puoi solo visualizzare i dati.";
+
+            elencoDetail.innerHTML = `
+                <h3>${escapeHtml(studentName)}</h3>
+                <p class="muted">${escapeHtml(canEditText)}</p>
+                <div class="detail-grid">
+                    <div>
+                        <label>Nome studente</label>
+                        <input id="elencoStudentName" value="${escapeHtml(studentName)}" ${canEdit ? "" : "disabled"}>
+                    </div>
+                    <div>
+                        <label>Gruppo</label>
+                        <select id="elencoStudentGruppo" ${canEdit ? "" : "disabled"}>${gruppoOptions}</select>
+                    </div>
+                </div>
+                <div class="flex" style="margin-top:10px;">
+                    <button onclick="saveElencoStudent()" ${canEdit ? "" : "disabled"}>Salva dati</button>
+                    <button class="delete-btn" onclick="deleteElencoStudent()" ${(canEdit || isAdmin) ? "" : "disabled"}>Elimina studente</button>
+                </div>
+                <h4 style="margin-top:16px;">Riepilogo presenze</h4>
+                <div class="row"><div>Presenti: ${attendance.presente}</div></div>
+                <div class="row"><div>Assenze giustificate: ${attendance.assenteGiustificato}</div></div>
+                <div class="row"><div>Assenze ingiustificate: ${attendance.assenteIngiustificato}</div></div>
+                <h4 style="margin-top:16px;">Giudizi</h4>
+                ${giudiziHtml}
+                <h4 style="margin-top:16px;">Note</h4>
+                ${noteHtml}
+            `;
+        }
+
+        function saveElencoStudent() {
+            if (!selectedElencoStudent) return;
+
+            let originalName = selectedElencoStudent;
+            let originalGruppo = getStudentGruppo(originalName);
+            if (!originalGruppo) return;
+
+            if (!canEditStudent(originalName) && currentUser.role !== "admin") {
+                alert("Non sei autorizzato a modificare questo studente");
+                return;
+            }
+
+            let newName = document.getElementById('elencoStudentName').value.trim();
+            let newGruppo = document.getElementById('elencoStudentGruppo').value;
+
+            if (!newName || !newGruppo) {
+                alert("Inserisci nome e gruppo validi");
+                return;
+            }
+
+            let changedGruppo = newGruppo !== originalGruppo;
+            let changedName = newName !== originalName;
+
+            if (changedGruppo && !hasEditPermissionForGruppo(newGruppo) && currentUser.role !== "admin") {
+                alert("Non sei autorizzato a spostare lo studente in questo gruppo");
+                return;
+            }
+
+            if (changedName && findStudentConflicts(newName)) {
+                alert("Esiste gia uno studente con questo nome");
+                return;
+            }
+
+            let sourceIndex = gruppi[originalGruppo].indexOf(originalName);
+            if (sourceIndex === -1) return;
+
+            if (changedGruppo) {
+                gruppi[originalGruppo].splice(sourceIndex, 1);
+                gruppi[newGruppo] ??= [];
+                gruppi[newGruppo].push(originalName);
+            }
+
+            let targetGruppo = changedGruppo ? newGruppo : originalGruppo;
+
+            if (changedName) {
+                let targetIndex = gruppi[targetGruppo].indexOf(originalName);
+                if (targetIndex !== -1) gruppi[targetGruppo][targetIndex] = newName;
+
+                if (giudizi[originalName]) {
+                    giudizi[newName] = giudizi[originalName];
+                    delete giudizi[originalName];
+                }
+
+                if (note[originalName]) {
+                    note[newName] = note[originalName];
+                    delete note[originalName];
+                }
+            }
+
+            let finalName = changedName ? newName : originalName;
+
+            if (presenze[originalGruppo]?.[originalName]) {
+                let presenzaData = presenze[originalGruppo][originalName];
+                delete presenze[originalGruppo][originalName];
+                presenze[targetGruppo] ??= {};
+                presenze[targetGruppo][finalName] = presenzaData;
+            }
+
+            selectedElencoStudent = finalName;
+            saveAll();
+            renderElencoPage();
+            renderStudentList();
+            renderDailyPage();
+            renderGradeSelectors();
+            renderNoteSelectors();
+            renderGruppiList();
+        }
+
+        function deleteElencoStudent() {
+            if (!selectedElencoStudent) return;
+
+            let studentName = selectedElencoStudent;
+            let gruppoName = getStudentGruppo(studentName);
+            if (!gruppoName) return;
+
+            if (!canEditStudent(studentName) && currentUser.role !== "admin") {
+                alert("Non sei autorizzato a eliminare questo studente");
+                return;
+            }
+
+            let index = gruppi[gruppoName].indexOf(studentName);
+            if (index === -1) return;
+
+            gruppi[gruppoName].splice(index, 1);
+            delete giudizi[studentName];
+            delete note[studentName];
+            if (presenze[gruppoName]?.[studentName]) {
+                delete presenze[gruppoName][studentName];
+            }
+
+            selectedElencoStudent = null;
+            saveAll();
+            renderElencoPage();
+            renderStudentList();
+            renderDailyPage();
+            renderGradeSelectors();
+            renderNoteSelectors();
+            renderGruppiList();
         }
 
         // Daily attendance
@@ -1096,7 +1397,7 @@
         function updateGradeInputs() {
             let s = document.getElementById('gradeStudentSelect').value;
             let isGruppo = s && s.startsWith('GROUP:');
-            let canEdit = s && !isGruppo && canEditStudent(s);
+            let canEdit = s && !isGruppo && canWriteGiudiziENote(s);
             
             document.getElementById('gradeValue').disabled = !canEdit;
             document.getElementById('gradeDate').disabled = !canEdit;
@@ -1116,7 +1417,7 @@
             const allowedJudgments = ["A0", "A0+", "A1-", "A1", "A1+"];
             if (!allowedJudgments.includes(v)) return;
             
-            if (!canEditStudent(s)) {
+            if (!canWriteGiudiziENote(s)) {
                 alert("Non puoi inserire giudizi per questo studente");
                 return;
             }
@@ -1246,7 +1547,7 @@
         function updateNoteInputs() {
             let s = document.getElementById('noteStudentSelect').value;
             let isGruppo = s && s.startsWith('GROUP:');
-            let canEdit = s && !isGruppo && canEditStudent(s);
+            let canEdit = s && !isGruppo && canWriteGiudiziENote(s);
             
             document.getElementById('noteText').disabled = !canEdit;
             document.getElementById('noteDate').disabled = !canEdit;
@@ -1260,7 +1561,7 @@
             let d = document.getElementById('noteDate').value;
             if (!s || !t || !d) return;
             
-            if (!canEditStudent(s)) {
+            if (!canWriteGiudiziENote(s)) {
                 alert("Non puoi inserire note per questo studente");
                 return;
             }
